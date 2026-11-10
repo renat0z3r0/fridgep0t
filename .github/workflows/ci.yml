@@ -35,4 +35,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
       - run: cargo install cargo-audit --locked
-      - run: cargo audit
+      # RUSTSEC-2026-0009 (time < 0.3.47, DoS via stack exhaustion when PARSING
+      # untrusted input) is ignored on purpose. `time` is pulled only by rcgen
+      # and used only in src/tls.rs, which builds the certificate's validity
+      # dates from the system clock and integer offsets and never parses
+      # attacker input, so the advisory is not reachable here. The patched
+      # 0.3.47 requires deranged 0.5 / edition 2024 (rustc >= 1.85), which would
+      # break this project's MSRV 1.75 and the rust:1.83 container. Drop this
+      # ignore when the MSRV moves to >= 1.85.
+      - run: cargo audit --ignore RUSTSEC-2026-0009
