@@ -1,0 +1,36 @@
+[package]
+name = "fridgep0t"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Low-interaction decoy for supermarket refrigeration controllers (Danfoss AK-SM 800A / AK-SC 355, Dixell XWEB EVO, Carel pCOWeb, Eliwell TelevisGo, RDM Data Manager)"
+license = "BSD-4-Clause"
+
+[lib]
+name = "fridgep0t"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fridgep0t"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "time", "macros", "sync", "signal"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pki-types = { version = "1", features = ["std"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem", "crypto"] }
+time = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.9"
+rand = "0.8"
+regex = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

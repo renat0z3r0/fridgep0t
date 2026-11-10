@@ -1,0 +1,84 @@
+#cloud-config
+# fridgep0t on a fresh Ubuntu 24.04 server: paste this into the "User data" box
+# when you create the server (DigitalOcean, Hetzner, Vultr, AWS, ...). About two
+# to three minutes after boot the decoy is listening.
+#
+# Before deploying, set three things below:
+#   PERSONA        danfoss, dixell, aksc355, carel, eliwell, or rdm
+#   FRIDGEP0T_REPO the Git URL of your fridgep0t repository.
+#   FRIDGEP0T_REF  a commit SHA or tag to pin — never deploy a moving branch.
+#                  Whoever controls the repo controls a pinned-to-HEAD fleet at
+#                  the next rebuild; pinning a reviewed commit removes that.
+#
+# The host firewall below drops all egress except DNS and new TCP 80/443, which
+# the package and image pulls need (mirrors are not pinned by address, so this
+# is not a per-host allowlist). The decoy itself never connects out. Restrict
+# SSH to your own address in the provider's firewall as well.
+
+package_update: true
+packages: [podman, git, nftables]
+
+write_files:
+  - path: /etc/fridgep0t.env
+    content: |
+      PERSONA=danfoss
+      FRIDGEP0T_REPO=REPLACE_WITH_REPO_URL
+      FRIDGEP0T_REF=REPLACE_WITH_COMMIT_SHA_OR_TAG
+      DEVICE_TZ=Europe/Rome
+  - path: /etc/nftables.conf
+    content: |
+      #!/usr/sbin/nft -f
+      flush ruleset
+      table inet filter {
+        chain input {
+          type filter hook input priority 0; policy drop;
+          ct state established,related accept
+          iif "lo" accept
+          # Add 502 here, plus `-p 502:502 -e MODBUS_PORT=502` below, to expose Modbus.
+          tcp dport { 22, 80, 443 } accept
+          ip protocol icmp accept
+        }
+        chain output {
+          type filter hook output priority 0; policy drop;
+          ct state established,related accept
+          oif "lo" accept
+          # Egress only for DNS and package updates; nothing else leaves.
+          udp dport 53 accept
+          tcp dport 53 accept
+          tcp dport { 80, 443 } ct state new accept
+        }
+      }
+
+runcmd:
+  - systemctl enable --now nftables
+  # --userns=auto needs a host UID range to hand out, once per host.
+  - grep -q '^containers:' /etc/subuid || echo 'containers:2147483647:2147483648' >> /etc/subuid
+  - grep -q '^containers:' /etc/subgid || echo 'containers:2147483647:2147483648' >> /etc/subgid
+  # One `sh -e` script: cloud-init keeps running runcmd entries after one fails,
+  # so a bad FRIDGEP0T_REF must stop here, not fall through to building and
+  # running whatever the default branch holds.
+  - - sh
+    - -ec
+    - |
+      . /etc/fridgep0t.env
+      case "$FRIDGEP0T_REPO" in
+        ""|REPLACE_WITH_*) echo "cloud-init: set FRIDGEP0T_REPO to your repository URL" >&2; exit 1 ;;
+      esac
+      case "$FRIDGEP0T_REF" in
+        ""|REPLACE_WITH_*) echo "cloud-init: set FRIDGEP0T_REF to a reviewed commit or tag" >&2; exit 1 ;;
+      esac
+      git clone "$FRIDGEP0T_REPO" /opt/fridgep0t
+      git -C /opt/fridgep0t checkout --detach "$FRIDGEP0T_REF"
+      podman build -t fridgep0t /opt/fridgep0t
+      if [ "$PERSONA" = danfoss ]; then ports="-p 80:8080 -p 443:8443"; https=8443; else ports="-p 80:8080"; https=0; fi
+      # One random seed per host, kept in the container's config: the unit keeps
+      # its store name, MAC and firmware across restarts, as a real one does,
+      # and shares them with no other deployment.
+      seed=$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')
+      podman run -d --name fridgep0t --restart=always \
+        --read-only --cap-drop=ALL --security-opt no-new-privileges --userns=auto \
+        --memory 128m --pids-limit 512 --log-opt max-size=10m \
+        $ports -v fridgep0t-logs:/logs:U \
+        -e PERSONA="$PERSONA" -e HTTPS_PORT=$https -e DEVICE_TZ="$DEVICE_TZ" -e IDENTITY_SEED="$seed" \
+        fridgep0t
+  - systemctl enable --now podman-restart.service

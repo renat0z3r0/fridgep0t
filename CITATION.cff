@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use fridgep0t in research, reports or products, please cite it as below (see LICENSE, clause 3)."
+title: "fridgep0t: a low-interaction honeypot for supermarket refrigeration controllers"
+type: software
+authors:
+  - name: "R3n4t0 Z3r0"
+year: 2026
+license: BSD-4-Clause
+repository-code: "https://github.com/renat0z3r0/fridgep0t"

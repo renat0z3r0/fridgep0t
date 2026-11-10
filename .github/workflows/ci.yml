@@ -1,0 +1,38 @@
+name: ci
+on:
+  push:
+  pull_request:
+  schedule:
+    # Mondays 06:00 UTC: advisories arrive without code changes.
+    - cron: "0 6 * * 1"
+permissions:
+  contents: read
+# Actions are pinned by commit SHA, so a moved tag cannot change what runs here.
+# The comment after each SHA says what it was when pinned (2026-11-10); refresh
+# with `git ls-remote https://github.com/<owner>/<repo> <tag-or-branch>`.
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: cargo build --release --locked
+      - run: cargo test --release --locked
+      - run: cargo clippy --release --locked -- -D warnings
+      - run: cargo fmt --check
+  msrv:
+    # rust-version in Cargo.toml; the lockfile is pinned to keep this building.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@173bc5f77e0f2b4f1cf2a1657622959aa90d972f # 1.75
+      - run: cargo build --release --locked
+      - run: cargo test --release --locked
+  audit:
+    # Known advisories against the locked dependency tree (RustSec database).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+      - run: cargo install cargo-audit --locked
+      - run: cargo audit
